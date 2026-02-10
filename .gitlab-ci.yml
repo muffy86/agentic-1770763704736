@@ -1,0 +1,47 @@
+image: docker:latest
+
+stages:
+  - build
+  - test
+  - deploy
+
+variables:
+  DOCKER_IMAGE_NAME: my-app
+
+before_script:
+  - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+
+build:
+  stage: build
+  script:
+    - docker build -t "$CI_REGISTRY_IMAGE/$DOCKER_IMAGE_NAME:$CI_COMMIT_SHA" .
+    - docker push "$CI_REGISTRY_IMAGE/$DOCKER_IMAGE_NAME:$CI_COMMIT_SHA"
+  tags:
+    - docker
+
+test:
+  stage: test
+  image: python:3.9-slim
+  before_script:
+    - pip install -r requirements.txt  # Assuming you have a requirements.txt
+  script:
+    - python -m unittest discover  # Or your preferred testing command
+  dependencies:
+    - build
+
+deploy:
+  stage: deploy
+  image: docker:latest
+  script:
+    - docker pull "$CI_REGISTRY_IMAGE/$DOCKER_IMAGE_NAME:$CI_COMMIT_SHA"
+    - docker tag "$CI_REGISTRY_IMAGE/$DOCKER_IMAGE_NAME:$CI_COMMIT_SHA" "$CI_REGISTRY_IMAGE/$DOCKER_IMAGE_NAME:latest"
+    - docker push "$CI_REGISTRY_IMAGE/$DOCKER_IMAGE_NAME:latest"
+    #  - ssh deploy_server "docker stop my-container || true && docker rm my-container || true && docker run -d -p 80:80 --name my-container $CI_REGISTRY_IMAGE/$DOCKER_IMAGE_NAME:latest"
+  dependencies:
+    - test
+  environment:
+    name: production
+  only:
+    - main
+  tags:
+    - docker
